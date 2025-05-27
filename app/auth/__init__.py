@@ -1,5 +1,7 @@
 import jwt
 import datetime
+import secrets
+import hashlib
 from datetime import timezone
 from fastapi import Request
 from fastapi.security import OAuth2PasswordBearer
@@ -7,20 +9,20 @@ from fastapi.security.utils import get_authorization_scheme_param
 from typing import Optional
 from settings.config import SECRET_KEY, ACCESS_TOKEN_EXPIRE_MINUTES, EXCLUDE_PATHS
 from core.response import ExceptionResponse
-from passlib.context import CryptContext
+from db.table import User
 
-# 密码加密上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def generate_salt() -> str:
+    """生成随机盐值"""
+    return secrets.token_hex(16)
 
-def get_password_hash(password: str) -> str:
-    """对密码进行加密"""
-    return pwd_context.hash(password)
+def hash_password_with_salt(password: str, salt: str) -> str:
+    """使用盐值对密码进行哈希"""
+    # 使用 SHA-256 算法
+    return hashlib.sha256((password + salt).encode()).hexdigest()
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password_with_salt(password: str, salt: str, hashed_password: str) -> bool:
     """验证密码"""
-    return pwd_context.verify(plain_password, hashed_password)
-
-# 123456对应的hash值：$2b$12$qE3aPjFvz1lBodzXNsCZVuqKr7cnu0tzsCEazmCiEr8hNaPvay34W
+    return hash_password_with_salt(password, salt) == hashed_password
 
 # 自定义OAuth2PasswordBearer类，解决登录接口和文档问题
 class CustomOAuth2PasswordBearer(OAuth2PasswordBearer):
@@ -56,25 +58,28 @@ class CustomOAuth2PasswordBearer(OAuth2PasswordBearer):
             username = payload.get("username")
             if username is None:
                 raise ExceptionResponse(code=405, message="无效的token内容")
-            return username
+            else:
+                user = await User.get(username=username)
+                if user is None:
+                    raise ExceptionResponse(code=405, message="用户不存在")
+                else:
+                    return username
         except jwt.ExpiredSignatureError:
             raise ExceptionResponse(code=406, message="token已过期")
         except jwt.InvalidTokenError:
             raise ExceptionResponse(code=405, message="token无效")
 
-
 # 使用自定义的OAuth2PasswordBearer
-oauth2_scheme = CustomOAuth2PasswordBearer(tokenUrl="login/swagger")#此处是登录接口的路径
+oauth2_scheme = CustomOAuth2PasswordBearer(tokenUrl="login/swagger")
 
 # 创建token
 def create_token(data:dict):
-    # 此处传入的data必须是{"username": "用户名" ...}
-    to_encode=data.copy()
+    to_encode = data.copy()
     to_encode.update({"exp":datetime.datetime.now(timezone.utc)+datetime.timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)})
-    encoded_jwt=jwt.encode(
-        to_encode,# 要通过TOKEN传输的内容
-        SECRET_KEY, # JWT签名的密钥
-        algorithm="HS256", # JWT签名的算法
+    encoded_jwt = jwt.encode(
+        to_encode,
+        SECRET_KEY,
+        algorithm="HS256",
     )
     return encoded_jwt
 

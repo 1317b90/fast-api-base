@@ -1,14 +1,11 @@
-from typing import TypeVar, Optional
 from fastapi import Request, FastAPI
 from fastapi.responses import JSONResponse
-
-T = TypeVar("T")
 
 def SuccessResponse(message: str, data = None):
     return {"code": 200, "message": message, "data": data}
 
 class ExceptionResponse(Exception):
-    def __init__(self, code: int = 400, message: str = "业务异常",data: Optional[T] = None):
+    def __init__(self, code: int = 400, message: str = "业务异常",data= None):
         self.code = code
         self.message = message
         self.data = data
