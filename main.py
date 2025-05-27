@@ -1,17 +1,21 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from tortoise.contrib.fastapi import register_tortoise
-from core.exception import register_exceptions
-from app import user
+from core.response import register_exceptions
+from app.auth import user
 from db import TORTOISE_ORM
+from app.auth import oauth2_scheme,login
+
 
 app = FastAPI(
-    title="数据分析接口",
+    title="FastAPIBase",
+    dependencies=[Depends(oauth2_scheme)],  # 添加全局依赖，让所有接口都需要验证
 )
 register_exceptions(app)
 
 # 添加路由
 app.include_router(user.router)
+app.include_router(login.router)
 
 # 解决跨域
 app.add_middleware(
